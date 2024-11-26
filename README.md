@@ -20,7 +20,7 @@ A comprehensive platform for AI researchers to search, analyze, and collaborate 
 
 ### Prerequisites
 
-- Python 3.9+
+- [Anaconda](https://www.anaconda.com/download) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
 - Node.js 14+
 - PostgreSQL (optional)
 
@@ -28,15 +28,18 @@ A comprehensive platform for AI researchers to search, analyze, and collaborate 
 
 1. Clone the repository:
    ```bash
-   git clone [repository-url]
+   git clone https://github.com/canncupiscent/AI-Research-Hub.git
    cd AI-Research-Hub
    ```
 
 2. Set up the backend:
    ```bash
+   # Create and activate Conda environment
+   conda create --name ai_research_hub python=3.9
+   conda activate ai_research_hub
+
+   # Install dependencies
    cd src/backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
@@ -50,12 +53,17 @@ A comprehensive platform for AI researchers to search, analyze, and collaborate 
 
 1. Start the backend server:
    ```bash
+   # Make sure you're in the conda environment
+   conda activate ai_research_hub
+   
+   # From the backend directory
    cd src/backend
    uvicorn api.main:app --reload
    ```
 
 2. Start the frontend development server:
    ```bash
+   # From the frontend directory
    cd src/frontend
    npm start
    ```
@@ -71,16 +79,53 @@ The application will be available at:
 AI-Research-Hub/
 ├── src/
 │   ├── backend/
-│   │   ├── api/
-│   │   ├── models/
-│   │   ├── services/
-│   │   └── tests/
+│   │   ├── api/              # FastAPI routes and endpoints
+│   │   ├── models/           # Database models and configuration
+│   │   ├── services/         # Business logic and external API integration
+│   │   └── tests/           # Unit tests
 │   └── frontend/
-│       ├── public/
+│       ├── public/          # Static assets
 │       └── src/
-│           ├── components/
-│           └── config/
-└── docs/
+│           ├── components/  # React components
+│           └── config/      # Frontend configuration
+└── docs/                   # Documentation
+```
+
+## Development
+
+### Environment Management
+
+```bash
+# Create new environment
+conda create --name ai_research_hub python=3.9
+
+# Activate environment
+conda activate ai_research_hub
+
+# Deactivate environment
+conda deactivate
+
+# List all environments
+conda env list
+```
+
+### Git Workflow
+
+```bash
+# Check status
+git status
+
+# Create new branch
+git checkout -b feature/new-feature
+
+# Add changes
+git add .
+
+# Commit changes
+git commit -m "Description of changes"
+
+# Push changes
+git push origin feature/new-feature
 ```
 
 ## Contributing
@@ -93,4 +138,10 @@ AI-Research-Hub/
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Repository
+
+- GitHub: [canncupiscent/AI-Research-Hub](https://github.com/canncupiscent/AI-Research-Hub)
+- Issues: [GitHub Issues](https://github.com/canncupiscent/AI-Research-Hub/issues)
+- Pull Requests: [GitHub PRs](https://github.com/canncupiscent/AI-Research-Hub/pulls) 
