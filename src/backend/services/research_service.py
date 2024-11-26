@@ -5,6 +5,7 @@ import logging
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Dict
 from datetime import datetime
+from .ollama_service import OllamaService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -13,9 +14,10 @@ logger = logging.getLogger(__name__)
 class ResearchService:
     def __init__(self):
         """Initialize the research service."""
-        self.semantic_scholar_url = "https://api.semanticscholar.org/graph/v1"  # Updated to v1 graph API
+        self.semantic_scholar_url = "https://api.semanticscholar.org/graph/v1"
         self.arxiv_url = "http://export.arxiv.org/api/query"
         self.session = None
+        self.ollama = OllamaService()
         logger.info("ResearchService initialized")
 
     async def initialize(self):
@@ -271,32 +273,86 @@ class ResearchService:
             await self.initialize()
 
         try:
-            logger.info(f"Fetching details for paper: {paper_id}")
+            logger.info(f"Fetching details for paper ID: {paper_id}")
+            
+            # Try Semantic Scholar first
             async with self.session.get(
-                f"{self.semantic_scholar_url}/paper/{paper_id}"
+                f"{self.semantic_scholar_url}/paper/{paper_id}",
+                params={"fields": "title,abstract,authors,year,venue,url,citationCount"}
             ) as response:
-                response_text = await response.text()
-                logger.info(f"Paper details response status: {response.status}")
-                logger.info(f"Paper details response: {response_text[:200]}...")
+                logger.info(f"Semantic Scholar API response status: {response.status}")
                 
                 if response.status == 200:
                     data = await response.json()
-                    logger.info("Successfully retrieved paper details")
-                    return data
+                    logger.info("Successfully retrieved paper details from Semantic Scholar")
+                    return {
+                        "title": data.get("title", ""),
+                        "abstract": data.get("abstract", ""),
+                        "authors": [author.get("name", "") for author in data.get("authors", [])],
+                        "year": data.get("year"),
+                        "venue": data.get("venue", ""),
+                        "url": data.get("url", ""),
+                        "citations": data.get("citationCount", 0),
+                        "source": "Semantic Scholar",
+                        "paper_id": paper_id
+                    }
+                elif response.status == 404:
+                    # If not found in Semantic Scholar, try arXiv
+                    logger.info("Paper not found in Semantic Scholar, trying arXiv...")
+                    if paper_id.startswith("arXiv:"):
+                        arxiv_id = paper_id.replace("arXiv:", "")
+                    else:
+                        arxiv_id = paper_id
+                        
+                    async with self.session.get(
+                        f"{self.arxiv_url}?id_list={arxiv_id}"
+                    ) as arxiv_response:
+                        if arxiv_response.status == 200:
+                            response_text = await arxiv_response.text()
+                            papers = self._parse_arxiv_response(response_text)
+                            if papers:
+                                logger.info("Successfully retrieved paper details from arXiv")
+                                return papers[0]
+                        logger.error("Paper not found in arXiv either")
+                        return None
                 else:
                     logger.error(f"Error getting paper details: {response.status}")
                     return None
         except Exception as e:
             logger.error(f"Error in get_paper_details: {str(e)}")
+            logger.exception("Full traceback:")
             return None
 
     async def analyze_paper(self, paper_id: str) -> Dict:
-        """Analyze a paper using LLM."""
-        logger.info(f"Analyzing paper: {paper_id}")
-        # This is a placeholder for LLM integration
-        return {
-            "summary": "Paper analysis not implemented yet",
-            "key_findings": [],
-            "methodology": "",
-            "future_work": []
-        }
+        """Analyze a paper using Ollama."""
+        try:
+            logger.info(f"Starting analysis for paper ID: {paper_id}")
+            
+            # First, get the paper details
+            paper = await self.get_paper_details(paper_id)
+            if not paper:
+                logger.error(f"Paper not found: {paper_id}")
+                raise ValueError(f"Paper not found: {paper_id}")
+
+            logger.info(f"Retrieved paper details: {paper.get('title')}")
+            
+            # Analyze the paper using Ollama
+            analysis = await self.ollama.analyze_paper(paper)
+            
+            # Add paper metadata to analysis
+            analysis["paper_metadata"] = {
+                "title": paper.get("title"),
+                "authors": paper.get("authors"),
+                "year": paper.get("year"),
+                "source": paper.get("source")
+            }
+            
+            return analysis
+        except Exception as e:
+            logger.error(f"Error in analyze_paper: {str(e)}")
+            logger.exception("Full traceback:")
+            raise
+
+    async def check_ollama_health(self) -> Dict:
+        """Check Ollama service health."""
+        return await self.ollama.check_health()

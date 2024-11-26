@@ -7,13 +7,14 @@ A comprehensive platform for AI researchers to search, analyze, and collaborate 
 - 📚 Research Paper Search: Search and analyze papers from multiple sources (arXiv, Semantic Scholar)
 - 📊 Project Management: Track and manage research projects
 - 💾 Dataset Management: Organize and share research datasets
-- 🔍 Advanced Analysis: Analyze papers using AI/ML techniques
+- 🔍 Advanced Analysis: Analyze papers using AI/ML techniques (powered by Ollama)
 
 ## Tech Stack
 
 - **Frontend**: React.js with Material-UI
 - **Backend**: FastAPI (Python)
 - **APIs**: arXiv, Semantic Scholar
+- **LLM**: Ollama with llama3.2 model
 - **Database**: PostgreSQL (planned)
 
 ## Getting Started
@@ -22,6 +23,7 @@ A comprehensive platform for AI researchers to search, analyze, and collaborate 
 
 - [Anaconda](https://www.anaconda.com/download) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
 - Node.js 14+
+- [Ollama](https://ollama.ai/) with llama3.2 model installed
 - PostgreSQL (optional)
 
 ### Installation
@@ -32,7 +34,14 @@ A comprehensive platform for AI researchers to search, analyze, and collaborate 
    cd AI-Research-Hub
    ```
 
-2. Set up the backend:
+2. Set up Ollama:
+   ```bash
+   # Install Ollama from https://ollama.ai/
+   # Then pull the llama3.2 model
+   ollama pull llama3.2
+   ```
+
+3. Set up the backend:
    ```bash
    # Create and activate Conda environment
    conda create --name ai_research_hub python=3.9
@@ -43,7 +52,7 @@ A comprehensive platform for AI researchers to search, analyze, and collaborate 
    pip install -r requirements.txt
    ```
 
-3. Set up the frontend:
+4. Set up the frontend:
    ```bash
    cd src/frontend
    npm install
@@ -51,7 +60,13 @@ A comprehensive platform for AI researchers to search, analyze, and collaborate 
 
 ### Running the Application
 
-1. Start the backend server:
+1. Start Ollama:
+   ```bash
+   # In a separate terminal
+   ollama serve
+   ```
+
+2. Start the backend server:
    ```bash
    # Make sure you're in the conda environment
    conda activate ai_research_hub
@@ -61,7 +76,7 @@ A comprehensive platform for AI researchers to search, analyze, and collaborate 
    uvicorn api.main:app --reload
    ```
 
-2. Start the frontend development server:
+3. Start the frontend development server:
    ```bash
    # From the frontend directory
    cd src/frontend

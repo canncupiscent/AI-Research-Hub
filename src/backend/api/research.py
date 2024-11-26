@@ -5,6 +5,19 @@ from services.research_service import ResearchService
 
 router = APIRouter()
 
+@router.get("/health/ollama")
+async def check_ollama_health(
+    service: ResearchService = Depends(ResearchService)
+):
+    """Check if Ollama service is healthy."""
+    try:
+        result = await service.check_ollama_health()
+        if result["status"] != "healthy":
+            raise HTTPException(status_code=503, detail=result)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
 @router.get("/search")
 async def search_papers(
     query: str,
@@ -36,14 +49,16 @@ async def get_paper_details(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/analyze")
+@router.post("/analyze/{paper_id}")
 async def analyze_paper(
     paper_id: str,
     service: ResearchService = Depends(ResearchService)
 ):
-    """Analyze a paper using LLM."""
+    """Analyze a paper using Ollama."""
     try:
         analysis = await service.analyze_paper(paper_id)
         return analysis
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
