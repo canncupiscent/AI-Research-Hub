@@ -9,12 +9,15 @@ router = APIRouter()
 async def search_papers(
     query: str,
     page: Optional[int] = 1,
-    limit: Optional[int] = 10,
+    limit: Optional[int] = 20,
+    sources: Optional[str] = "semantic_scholar,arxiv",
     service: ResearchService = Depends(ResearchService)
 ):
     """Search for research papers."""
     try:
-        results = await service.search_papers(query, page, limit)
+        # Convert sources string to list
+        source_list = sources.split(',') if sources else ["semantic_scholar", "arxiv"]
+        results = await service.search_papers(query, page, limit, source_list)
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

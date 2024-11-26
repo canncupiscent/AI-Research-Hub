@@ -39,25 +39,45 @@ class ResearchService:
         self,
         query: str,
         page: int = 1,
-        limit: int = 10
+        limit: int = 20,
+        sources: List[str] = None
     ) -> Dict:
         """Search for papers using multiple sources."""
         start_time = datetime.now()
-        logger.info(f"Starting paper search for query: {query}")
+        logger.info(f"Starting paper search for query: {query}, page: {page}, limit: {limit}, sources: {sources}")
 
         if not self.session:
             logger.info("Initializing HTTP session")
             await self.initialize()
 
         try:
-            # Search both sources concurrently
-            logger.info("Starting concurrent search of Semantic Scholar and arXiv")
-            semantic_task = self._search_semantic_scholar(query, limit)
-            arxiv_task = self._search_arxiv(query, limit)
+            # Calculate offset based on page number
+            offset = (page - 1) * limit
+            # Request more results per source to ensure we have enough after deduplication
+            per_source_limit = limit * 2
+
+            # Default to all sources if none specified
+            sources = sources or ["semantic_scholar", "arxiv"]
+            tasks = []
+
+            # Create tasks based on selected sources
+            if "semantic_scholar" in sources:
+                tasks.append(self._search_semantic_scholar(query, per_source_limit, offset))
+            else:
+                tasks.append(asyncio.sleep(0))  # Dummy task if source not selected
+
+            if "arxiv" in sources:
+                tasks.append(self._search_arxiv(query, per_source_limit, offset))
+            else:
+                tasks.append(asyncio.sleep(0))  # Dummy task if source not selected
+
+            # Search selected sources concurrently
+            logger.info(f"Starting concurrent search of selected sources: {sources}")
+            results = await asyncio.gather(*tasks)
             
-            logger.info("Waiting for search results...")
-            results = await asyncio.gather(semantic_task, arxiv_task)
-            semantic_results, arxiv_results = results
+            # Filter out empty results from dummy tasks
+            semantic_results = results[0] if "semantic_scholar" in sources else []
+            arxiv_results = results[1] if "arxiv" in sources else []
             
             logger.info(f"Found {len(semantic_results)} results from Semantic Scholar")
             logger.info(f"Found {len(arxiv_results)} results from arXiv")
@@ -65,15 +85,21 @@ class ResearchService:
             # Merge and deduplicate results
             combined_results = self._merge_results(semantic_results, arxiv_results)
             
+            # Calculate total results (estimate)
+            total_results = len(combined_results) * (page + 1)  # Estimate total based on current page
+            
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
             logger.info(f"Search completed in {duration} seconds with {len(combined_results)} total results")
 
             return {
-                "results": combined_results[:limit],
-                "total": len(combined_results),
+                "results": combined_results[:limit],  # Return only requested number of results
+                "total": total_results,
                 "duration": duration,
-                "query": query
+                "page": page,
+                "limit": limit,
+                "query": query,
+                "sources": sources
             }
 
         except Exception as e:
@@ -81,7 +107,7 @@ class ResearchService:
             logger.exception("Full traceback:")
             raise
 
-    async def _search_semantic_scholar(self, query: str, limit: int) -> List[Dict]:
+    async def _search_semantic_scholar(self, query: str, limit: int, offset: int = 0) -> List[Dict]:
         """Search papers using Semantic Scholar API."""
         try:
             start_time = datetime.now()
@@ -90,6 +116,7 @@ class ResearchService:
             params = {
                 "query": query,
                 "limit": limit,
+                "offset": offset,
                 "fields": "title,abstract,authors,year,venue,url,citationCount"
             }
             
@@ -97,13 +124,8 @@ class ResearchService:
                 f"{self.semantic_scholar_url}/paper/search",
                 params=params
             ) as response:
-                response_text = await response.text()
-                logger.info(f"Semantic Scholar response status: {response.status}")
-                logger.info(f"Semantic Scholar response: {response_text[:200]}...")  # Log first 200 chars
-                
                 if response.status == 200:
                     data = await response.json()
-                    duration = (datetime.now() - start_time).total_seconds()
                     papers = data.get("data", [])
                     
                     # Transform to common format
@@ -127,29 +149,29 @@ class ResearchService:
             logger.error(f"Error in Semantic Scholar search: {str(e)}")
             return []
 
-    async def _search_arxiv(self, query: str, limit: int) -> List[Dict]:
+    async def _search_arxiv(self, query: str, limit: int, offset: int = 0) -> List[Dict]:
         """Search papers using arXiv API."""
         try:
             start_time = datetime.now()
             logger.info(f"Searching arXiv for: {query}")
             
+            # Format query according to arXiv API standards
+            formatted_query = query.replace(' ', '+AND+')
+            
             params = {
-                "search_query": f"all:{query}",
-                "max_results": limit,
-                "sortBy": "relevance",
-                "sortOrder": "descending"
+                'search_query': f'all:{formatted_query}',
+                'start': str(offset),
+                'max_results': str(limit),
+                'sortBy': 'relevance',
+                'sortOrder': 'descending'
             }
             
             async with self.session.get(
                 self.arxiv_url,
                 params=params
             ) as response:
-                response_text = await response.text()
-                logger.info(f"arXiv response status: {response.status}")
-                logger.info(f"arXiv response: {response_text[:200]}...")  # Log first 200 chars
-                
                 if response.status == 200:
-                    results = self._parse_arxiv_response(response_text)
+                    results = self._parse_arxiv_response(await response.text())
                     duration = (datetime.now() - start_time).total_seconds()
                     logger.info(f"arXiv search completed in {duration} seconds")
                     logger.info(f"Found {len(results)} papers from arXiv")
@@ -176,21 +198,31 @@ class ResearchService:
             # Parse each entry
             for entry in root.findall('atom:entry', ns):
                 try:
-                    title = entry.find('atom:title', ns).text.strip()
-                    abstract = entry.find('atom:summary', ns).text.strip()
-                    authors = [author.find('atom:name', ns).text for author in entry.findall('atom:author', ns)]
+                    # Get basic metadata
+                    title = entry.find('atom:title', ns).text.strip().replace('\n', ' ')
+                    abstract = entry.find('atom:summary', ns).text.strip().replace('\n', ' ')
+                    authors = [author.find('atom:name', ns).text.strip() for author in entry.findall('atom:author', ns)]
                     published = entry.find('atom:published', ns).text[:4]  # Get year
-                    url = entry.find('atom:id', ns).text
+                    
+                    # Get arXiv specific data
+                    arxiv_id = entry.find('atom:id', ns).text.split('/')[-1]
+                    primary_category = entry.find('arxiv:primary_category', ns).get('term', '')
+                    
+                    # Construct URLs
+                    abstract_url = f"https://arxiv.org/abs/{arxiv_id}"
+                    pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
                     
                     paper = {
                         "title": title,
                         "abstract": abstract,
                         "authors": authors,
                         "year": published,
-                        "venue": "arXiv",
-                        "url": url,
+                        "venue": f"arXiv - {primary_category}",
+                        "url": abstract_url,
+                        "pdf_url": pdf_url,
                         "citations": 0,  # arXiv doesn't provide citation count
-                        "source": "arXiv"
+                        "source": "arXiv",
+                        "arxiv_id": arxiv_id
                     }
                     papers.append(paper)
                 except Exception as e:
@@ -208,19 +240,24 @@ class ResearchService:
             merged = []
             seen_titles = set()
 
-            # Process Semantic Scholar results first (usually higher quality)
-            for paper in semantic_results:
-                title = paper.get("title", "").lower()
-                if title and title not in seen_titles:
-                    seen_titles.add(title)
-                    merged.append(paper)
-
-            # Then process arXiv results
-            for paper in arxiv_results:
-                title = paper.get("title", "").lower()
-                if title and title not in seen_titles:
-                    seen_titles.add(title)
-                    merged.append(paper)
+            # Interleave results from both sources
+            max_len = max(len(semantic_results), len(arxiv_results))
+            for i in range(max_len):
+                # Add Semantic Scholar result
+                if i < len(semantic_results):
+                    paper = semantic_results[i]
+                    title = paper.get("title", "").lower()
+                    if title and title not in seen_titles:
+                        seen_titles.add(title)
+                        merged.append(paper)
+                
+                # Add arXiv result
+                if i < len(arxiv_results):
+                    paper = arxiv_results[i]
+                    title = paper.get("title", "").lower()
+                    if title and title not in seen_titles:
+                        seen_titles.add(title)
+                        merged.append(paper)
 
             logger.info(f"Merged results: {len(merged)} unique papers")
             return merged
