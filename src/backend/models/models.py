@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, Table
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, Table, JSON
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
+from sqlalchemy.sql import func
 
 Base = declarative_base()
 
@@ -55,3 +56,53 @@ class Dataset(Base):
     # Relationships
     owner = relationship('User', back_populates='owned_datasets')
     project = relationship('Project', back_populates='datasets') 
+
+class AnalyzedPaper(Base):
+    """Model for storing analyzed papers."""
+    __tablename__ = 'analyzed_papers'
+
+    id = Column(Integer, primary_key=True)
+    source_id = Column(String(255), unique=True, nullable=False)  # arxiv_ID or semantic_scholar_ID
+    title = Column(String(500), nullable=False)
+    abstract = Column(Text)
+    authors = Column(JSON)  # Store as JSON array
+    year = Column(Integer)
+    venue = Column(String(255))
+    url = Column(String(500))
+    citations = Column(Integer)
+    source = Column(String(50))  # "arXiv" or "Semantic Scholar"
+    
+    # Analysis results
+    summary = Column(Text)
+    key_findings = Column(JSON)  # Store as JSON array
+    methodology = Column(Text)
+    applications = Column(JSON)  # Store as JSON array
+    future_work = Column(JSON)  # Store as JSON array
+    
+    # Metadata
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def to_dict(self):
+        """Convert model to dictionary."""
+        return {
+            "id": self.id,
+            "source_id": self.source_id,
+            "title": self.title,
+            "abstract": self.abstract,
+            "authors": self.authors,
+            "year": self.year,
+            "venue": self.venue,
+            "url": self.url,
+            "citations": self.citations,
+            "source": self.source,
+            "analysis": {
+                "summary": self.summary,
+                "key_findings": self.key_findings,
+                "methodology": self.methodology,
+                "applications": self.applications,
+                "future_work": self.future_work
+            },
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        } 

@@ -119,7 +119,7 @@ class ResearchService:
                 "query": query,
                 "limit": limit,
                 "offset": offset,
-                "fields": "title,abstract,authors,year,venue,url,citationCount"
+                "fields": "title,abstract,authors,year,venue,url,citationCount,paperId"
             }
             
             async with self.session.get(
@@ -139,7 +139,9 @@ class ResearchService:
                         "venue": paper.get("venue", ""),
                         "url": paper.get("url", ""),
                         "citations": paper.get("citationCount", 0),
-                        "source": "Semantic Scholar"
+                        "source": "Semantic Scholar",
+                        "paper_id": paper.get("paperId"),  # Add Semantic Scholar paper ID
+                        "source_id": f"semantic_scholar_{paper.get('paperId')}"  # Unique identifier
                     } for paper in papers]
                     
                     logger.info(f"Found {len(transformed_papers)} papers from Semantic Scholar")
@@ -177,6 +179,11 @@ class ResearchService:
                     duration = (datetime.now() - start_time).total_seconds()
                     logger.info(f"arXiv search completed in {duration} seconds")
                     logger.info(f"Found {len(results)} papers from arXiv")
+                    
+                    # Add source_id to arXiv results
+                    for paper in results:
+                        paper["source_id"] = f"arxiv_{paper.get('arxiv_id')}"
+                    
                     return results
                 else:
                     logger.error(f"arXiv API error: {response.status}")
@@ -275,16 +282,35 @@ class ResearchService:
         try:
             logger.info(f"Fetching details for paper ID: {paper_id}")
             
-            # Try Semantic Scholar first
+            # Check if it's an arXiv ID
+            if paper_id.startswith(("arxiv:", "arXiv:")):
+                arxiv_id = paper_id.split(":")[-1]
+                logger.info(f"Detected arXiv ID: {arxiv_id}")
+                async with self.session.get(
+                    f"{self.arxiv_url}?id_list={arxiv_id}"
+                ) as response:
+                    if response.status == 200:
+                        papers = self._parse_arxiv_response(await response.text())
+                        if papers:
+                            paper = papers[0]
+                            paper["source_id"] = f"arxiv_{arxiv_id}"
+                            return paper
+            
+            # If not arXiv or arXiv not found, try Semantic Scholar
+            if paper_id.startswith("semantic_scholar_"):
+                semantic_id = paper_id.replace("semantic_scholar_", "")
+            else:
+                semantic_id = paper_id
+                
+            logger.info(f"Trying Semantic Scholar ID: {semantic_id}")
             async with self.session.get(
-                f"{self.semantic_scholar_url}/paper/{paper_id}",
-                params={"fields": "title,abstract,authors,year,venue,url,citationCount"}
+                f"{self.semantic_scholar_url}/paper/{semantic_id}",
+                params={"fields": "title,abstract,authors,year,venue,url,citationCount,paperId"}
             ) as response:
                 logger.info(f"Semantic Scholar API response status: {response.status}")
                 
                 if response.status == 200:
                     data = await response.json()
-                    logger.info("Successfully retrieved paper details from Semantic Scholar")
                     return {
                         "title": data.get("title", ""),
                         "abstract": data.get("abstract", ""),
@@ -294,30 +320,13 @@ class ResearchService:
                         "url": data.get("url", ""),
                         "citations": data.get("citationCount", 0),
                         "source": "Semantic Scholar",
-                        "paper_id": paper_id
+                        "paper_id": data.get("paperId"),
+                        "source_id": f"semantic_scholar_{data.get('paperId')}"
                     }
-                elif response.status == 404:
-                    # If not found in Semantic Scholar, try arXiv
-                    logger.info("Paper not found in Semantic Scholar, trying arXiv...")
-                    if paper_id.startswith("arXiv:"):
-                        arxiv_id = paper_id.replace("arXiv:", "")
-                    else:
-                        arxiv_id = paper_id
-                        
-                    async with self.session.get(
-                        f"{self.arxiv_url}?id_list={arxiv_id}"
-                    ) as arxiv_response:
-                        if arxiv_response.status == 200:
-                            response_text = await arxiv_response.text()
-                            papers = self._parse_arxiv_response(response_text)
-                            if papers:
-                                logger.info("Successfully retrieved paper details from arXiv")
-                                return papers[0]
-                        logger.error("Paper not found in arXiv either")
-                        return None
-                else:
-                    logger.error(f"Error getting paper details: {response.status}")
-                    return None
+                
+            logger.error("Paper not found in either source")
+            return None
+            
         except Exception as e:
             logger.error(f"Error in get_paper_details: {str(e)}")
             logger.exception("Full traceback:")

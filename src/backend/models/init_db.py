@@ -1,23 +1,28 @@
-import sys
-import os
+"""Script to initialize the database."""
+import logging
+from database import init_db, check_db_connection
 
-# Add the parent directory to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-from database import engine
-from models import Base
-
-def init_database():
+def main():
+    """Initialize the database."""
     try:
-        print("Creating database tables...")
-        Base.metadata.create_all(engine)
-        print("Database tables created successfully!")
-        return True
+        # Check database connection
+        logger.info("Checking database connection...")
+        if not check_db_connection():
+            logger.error("Failed to connect to database")
+            return
+
+        # Initialize database tables
+        logger.info("Initializing database tables...")
+        init_db()
+        logger.info("Database initialization completed successfully")
+
     except Exception as e:
-        print(f"Error creating database tables: {str(e)}")
-        print(f"Error type: {type(e)}")
-        return False
+        logger.error(f"Database initialization failed: {str(e)}")
+        raise
 
 if __name__ == "__main__":
-    print("Initializing database tables...")
-    init_database() 
+    main() 

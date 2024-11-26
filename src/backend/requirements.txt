@@ -17,4 +17,5 @@ pytest-cov==4.1.0
 black==24.1.1
 isort==5.13.2
 flake8==7.0.0
-ollama-python==0.1.6 
+ollama-python==0.4.5
+alembic==1.13.1
